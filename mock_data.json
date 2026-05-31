@@ -1,0 +1,29 @@
+{
+  "response": [
+    {
+      "fixture": {
+        "id": 1001,
+        "date": "2026-06-11T16:00:00+00:00",
+        "venue": {
+          "name": "Azteca Stadium",
+          "city": "Mexico City"
+        }
+      },
+      "teams": {
+        "home": {
+          "name": "Argentina"
+        },
+        "away": {
+          "name": "Spain"
+        }
+      },
+      "predictions": {
+        "percent": {
+          "home": "45%",
+          "draw": "25%",
+          "away": "30%"
+        }
+      }
+    }
+  ]
+}
