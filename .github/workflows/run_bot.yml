@@ -1,0 +1,29 @@
+name: Run Football Oracle
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: # این خط به ما اجازه می‌دهد ربات را دستی اجرا کنیم
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+          # اگر کتابخانه دیگری به requirements.txt اضافه شد، اینجا نصب می‌شود
+
+      - name: Execute Football Bot
+        env:
+          API_SPORTS_KEY: ${{ secrets.API_SPORTS_KEY }}
+        run: python bot.py
