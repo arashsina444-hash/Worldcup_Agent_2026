@@ -14,14 +14,14 @@ BASE_URL = "https://v3.football.api-sports.io"
 HEADERS_SPORTS = {"x-apisports-key": API_SPORTS_KEY}
 
 def predict_with_groq(mega_prompt):
-    print("🧠 در حال تزریق دیتا به مغز Llama 3 (سرورهای فوق‌سریع Groq)...")
+    print("🧠 در حال تزریق دیتا به مغز Llama 3.1 (سرورهای فوق‌سریع Groq)...")
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     data = {
-        "model": "llama3-70b-8192",
+        "model": "llama-3.1-70b-versatile",  # <--- آپدیت به مدل جدید و فعال
         "messages": [{"role": "user", "content": mega_prompt}],
         "temperature": 0.7
     }
