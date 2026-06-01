@@ -3,73 +3,57 @@ import requests
 import json
 from datetime import datetime
 
-# تنظیمات پایه API 
-API_KEY = "YOUR_RAPIDAPI_KEY_HERE"
-BASE_URL = "https://api-football-v1.p.rapidapi.com/v3"
+# ۱. فراخوانی امنِ کلید از متغیرهای محیطی (Environment Variables / GitHub Secrets)
+API_KEY = os.environ.get("API_SPORTS_KEY")
+
+if not API_KEY:
+    print("❌ خطا: متغیر 'API_SPORTS_KEY' پیدا نشد! اگر روی سیستم محلی هستی، آن را تنظیم کن.")
+    exit()
+
+BASE_URL = "https://v3.football.api-sports.io"
 
 HEADERS = {
-    "x-rapidapi-key": API_KEY,
-    "x-rapidapi-host": "api-football-v1.p.rapidapi.com"
+    "x-apisports-key": API_KEY
 }
 
-def fetch_upcoming_matches(date_str):
-    """
-    دریافت لیست بازی‌های یک تاریخ مشخص
-    """
-    print(f"در حال اتصال به دیتابیس جهانی برای تاریخ {date_str}...")
+def get_todays_fixtures():
+    today = datetime.now().strftime("%Y-%m-%d")
+    print(f"🔄 در حال اتصال به سرور مرکزی برای بازی‌های امروز ({today})...")
+    
     url = f"{BASE_URL}/fixtures"
-    querystring = {"date": date_str}
+    querystring = {"date": today}
     
     try:
-        if API_KEY == "YOUR_RAPIDAPI_KEY_HERE":
-            print("⚠️ هشدار: کلید API هنوز تنظیم نشده است.")
-            return []
-            
         response = requests.get(url, headers=HEADERS, params=querystring)
         response.raise_for_status()
         data = response.json()
         
+        if "errors" in data and data["errors"]:
+            print(f"❌ خطای سرور API: {data['errors']}")
+            return
+
         matches = data.get("response", [])
-        print(f"✅ تعداد {len(matches)} بازی با موفقیت دریافت شد.")
-        return matches
         
-    except requests.exceptions.RequestException as e:
-        print(f"❌ خطا در دریافت اطلاعات از سرور: {e}")
-        return []
-
-def predict_match_result(home_team, away_team):
-    """
-    ماژول پیش‌بینی مبتنی بر احتمالات (نسخه MVP)
-    """
-    # این درصدها در آینده توسط دیتای واقعی جایگزین می‌شوند
-    home_prob = 45
-    draw_prob = 25
-    away_prob = 30
-    
-    prediction_text = (
-        f"📊 تحلیل احتمالات بازی: {home_team} مقابل {away_team}\n"
-        f"🔹 شانس برد میزبان: {home_prob}%\n"
-        f"🔹 شانس مساوی: {draw_prob}%\n"
-        f"🔹 شانس برد میهمان: {away_prob}%\n"
-        "💡 این یک پیش‌بینی اولیه است و به‌زودی با دیتای دقیق‌تر آپدیت می‌شود."
-    )
-    
-    print(prediction_text)
-    return prediction_text
-
-def generate_daily_news():
-    pass
-
-def generate_historical_post():
-    pass
+        if not matches:
+            print("📭 امروز هیچ بازی مهمی در دیتابیس یافت نشد.")
+            return
+            
+        print(f"✅ تعداد {len(matches)} بازی دریافت شد. (نمایش ۵ بازی اول):\n")
+        print("-" * 40)
+        
+        for match in matches[:5]:
+            home_team = match['teams']['home']['name']
+            away_team = match['teams']['away']['name']
+            league = match['league']['name']
+            status = match['fixture']['status']['long']
+            
+            print(f"🏆 لیگ: {league}")
+            print(f"⚽ مسابقه: {home_team} 🆚 {away_team}")
+            print(f"وضعیت: {status}")
+            print("-" * 40)
+            
+    except Exception as e:
+        print(f"❌ خطا در ارتباط با سرور: {e}")
 
 if __name__ == "__main__":
-    print("بستر ایجنت اوراکل فوتبال جام جهانی ۲۰۲۶ با موفقیت راه‌اندازی شد!")
-    print("-" * 50)
-    
-    today = datetime.now().strftime("%Y-%m-%d")
-    matches_today = fetch_upcoming_matches(today)
-    
-    print("-" * 50)
-    # تست اولیه ماژول پیش‌بینی برای اطمینان از عملکرد
-    predict_match_result("آرژانتین", "اسپانیا")
+    get_todays_fixtures()
