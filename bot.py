@@ -18,16 +18,12 @@ BASE_URL = "https://v3.football.api-sports.io"
 HEADERS = {"x-apisports-key": API_SPORTS_KEY}
 
 def predict_with_fallback(mega_prompt):
-    """
-    اجرای سیستم چندکلیدی با استفاده از پکیج جدید و مدرن گوگل (google-genai)
-    """
     for i, key in enumerate(gemini_keys):
         print(f"🔄 در حال تست کلید جمنای شماره {i+1}...")
         try:
-            # کدهای آپدیت شده بر اساس استانداردهای جدید گوگل
             client = genai.Client(api_key=key)
             response = client.models.generate_content(
-                model='gemini-1.5-pro',
+                model='gemini-1.5-flash',
                 contents=mega_prompt
             )
             return response.text
@@ -75,10 +71,10 @@ def get_match_and_predict():
 
         ai_response_text = predict_with_fallback(mega_prompt)
         
-        print("\n" + "="*50)
+        print("\n" + "-"*50)
         print("🤖 خروجی نهایی اوراکل فوتبال:\n")
         print(ai_response_text)
-        print("="*50)
+        print("-"*50)
 
     except Exception as e:
         print(f"❌ خطا در پردازش: {e}")
