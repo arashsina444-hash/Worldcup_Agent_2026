@@ -4,55 +4,44 @@ from datetime import datetime
 
 # ۱. دریافت کلیدهای امنیتی
 API_SPORTS_KEY = os.environ.get("API_SPORTS_KEY")
-GEMINI_API_KEYS_STR = os.environ.get("GEMINI_API_KEYS")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
-if not API_SPORTS_KEY or not GEMINI_API_KEYS_STR:
-    print("❌ خطا: کلیدهای API تنظیم نشده‌اند!")
+if not API_SPORTS_KEY or not GROQ_API_KEY:
+    print("❌ خطا: کلیدهای API (فوتبال یا گروق) تنظیم نشده‌اند!")
     exit()
 
-gemini_keys = [k.strip() for k in GEMINI_API_KEYS_STR.split(',') if k.strip()]
-# لیست تمام مدل‌های ممکن برای دور زدن محدودیت‌های گوگل
-models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
-
 BASE_URL = "https://v3.football.api-sports.io"
-HEADERS = {"x-apisports-key": API_SPORTS_KEY}
+HEADERS_SPORTS = {"x-apisports-key": API_SPORTS_KEY}
 
-def predict_with_rest_api(mega_prompt):
-    """
-    ارتباط مستقیم با هسته گوگل بدون نیاز به کتابخانه‌های باگ‌دارِ پایتون
-    """
-    payload = {
-        "contents": [{"parts": [{"text": mega_prompt}]}]
+def predict_with_groq(mega_prompt):
+    print("🧠 در حال تزریق دیتا به مغز Llama 3 (سرورهای فوق‌سریع Groq)...")
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": "llama3-70b-8192",
+        "messages": [{"role": "user", "content": mega_prompt}],
+        "temperature": 0.7
     }
     
-    for i, key in enumerate(gemini_keys):
-        print(f"\n🔑 در حال تست کلید شماره {i+1}...")
-        for model in models_to_try:
-            print(f"  🔄 تست مدل: {model} ...", end=" ")
-            
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-            
-            try:
-                response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
-                data = response.json()
-                
-                if response.status_code == 200:
-                    print("✅ موفق!")
-                    return data['candidates'][0]['content']['parts'][0]['text']
-                else:
-                    error_msg = data.get('error', {}).get('message', 'Unknown Error')
-                    print(f"❌ مسدود (ارور: {response.status_code})")
-            except Exception as e:
-                print(f"❌ خطای ارتباطی: {e}")
-                
-    return "❌ تمام ترکیب‌های کلید و مدل با شکست مواجه شدند. گوگل دسترسی این کلیدها را کاملاً بسته است."
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response_json = response.json()
+        if response.status_code == 200:
+            return response_json['choices'][0]['message']['content']
+        else:
+            return f"❌ خطای سرور گروق: {response_json}"
+    except Exception as e:
+        return f"❌ خطای ارتباطی: {e}"
 
 def get_match_and_predict():
     today = datetime.now().strftime("%Y-%m-%d")
     print(f"🔄 در حال دریافت لیست بازی‌های امروز ({today})...")
     
     try:
-        response = requests.get(f"{BASE_URL}/fixtures", headers=HEADERS, params={"date": today})
+        response = requests.get(f"{BASE_URL}/fixtures", headers=HEADERS_SPORTS, params={"date": today})
         response.raise_for_status()
         matches = response.json().get("response", [])
         
@@ -66,7 +55,6 @@ def get_match_and_predict():
         league = target_match['league']['name']
         
         print(f"✅ مسابقه: {home_team} 🆚 {away_team} | لیگ: {league}")
-        print("🧠 در حال تزریق دیتا به مغز جمنای (ارتباط مستقیم ابری)...")
 
         mega_prompt = f"""
         تو یک آنالیزور ارشد و ژورنالیست هیجانی فوتبال هستی که برای یک سندیکای سرمایه‌گذاری کار می‌کنی.
@@ -84,7 +72,7 @@ def get_match_and_predict():
         🎯 پیش‌بینی دقیق نتیجه نهایی (مثلاً ۲-۱)
         """
 
-        ai_response_text = predict_with_rest_api(mega_prompt)
+        ai_response_text = predict_with_groq(mega_prompt)
         
         print("\n" + "="*50)
         print("🤖 خروجی نهایی اوراکل فوتبال:\n")
