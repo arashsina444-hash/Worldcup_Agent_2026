@@ -1,42 +1,27 @@
-import os, requests, time
+import os, requests
+import json
 
-API, GROQ = os.environ.get("API_SPORTS_KEY"), os.environ.get("GROQ_API_KEY")
+API = os.environ.get("API_SPORTS_KEY")
 HEADERS = {"x-apisports-key": API}
+BASE_URL = "https://v3.football.api-sports.io/fixtures"
 
-def run_bulletproof_test():
-    print("⏳ در حال دریافت ۱۵ بازی آخرِ تمام‌شده (مسیرِ میان‌بر بدون تاریخ)...")
+def run_truth_serum():
+    print("🔍 در حال تزریق سرم حقیقت به سرور API-Sports...\n")
     
-    # فقط یک درخواست ساده و بی‌رحمانه: آخرین بازی‌های لیگ انگلیس که تمام شده‌اند
-    res = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"league": 39, "status": "FT", "last": 15}).json()
+    # تست ۱: آیا مشکل از نذاشتن فصل (Season) است؟
+    print("--- تست ۱: درخواست بازی‌های لیگ ۳۹ بدون ذکر فصل ---")
+    res1 = requests.get(BASE_URL, headers=HEADERS, params={"league": 39, "last": 2}).json()
+    print(json.dumps(res1, indent=2, ensure_ascii=False))
     
-    matches = res.get("response", [])
-    if not matches:
-        print("❌ خطای سرور. لیستی دریافت نشد.")
-        return
+    # تست ۲: آیا مشکل از عدد ۲۰۲۵ است؟
+    print("\n--- تست ۲: درخواست با فصل ۲۰۲۵ ---")
+    res2 = requests.get(BASE_URL, headers=HEADERS, params={"league": 39, "season": 2025, "last": 2}).json()
+    print(json.dumps(res2, indent=2, ensure_ascii=False))
 
-    for i, m in enumerate(matches):
-        h, a = m['teams']['home']['name'], m['teams']['away']['name']
-        actual = f"{m['goals']['home']} - {m['goals']['away']}"
-        
-        # دریافت آمار پیشرفته
-        p_res = requests.get("https://v3.football.api-sports.io/predictions", headers=HEADERS, params={"fixture": m['fixture']['id']}).json()
-        stats = "دیتای خام"
-        if p_res and p_res.get("response"):
-            p = p_res["response"][0].get("predictions", {}).get("percent", {})
-            stats = f"برد میزبان {p.get('home', '')} | مساوی {p.get('draw', '')} | برد مهمان {p.get('away', '')}"
-        
-        # پرامپت نقطه‌زن
-        prompt = f"بازی {h} 🆚 {a}. آمار: {stats}. تو یک تحلیلگر جسور هستی. فقط نتیجه نهایی فوتبال را پیش‌بینی کن (مثل 2-1). هیچ کلمه‌ای اضافه‌تر ننویس."
-        
-        groq = requests.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {GROQ}"}, json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.7})
-        
-        try:
-            ai = groq.json()['choices'][0]['message']['content'].strip()
-        except:
-            ai = "خطای هوش مصنوعی"
-            
-        print(f"[{i+1}/15] {h} 🆚 {a} | 🤖 پیش‌بینی ماشین: {ai} | 📺 واقعیت: {actual}")
-        time.sleep(5) # ترمز امنیتی
+    # تست ۳: نکند API تقویمش را آپدیت کرده و الان فصل ۲۰۲۶ است؟!
+    print("\n--- تست ۳: درخواست با فصل ۲۰۲۶ ---")
+    res3 = requests.get(BASE_URL, headers=HEADERS, params={"league": 39, "season": 2026, "last": 2}).json()
+    print(json.dumps(res3, indent=2, ensure_ascii=False))
 
-if __name__ == "__main__": 
-    run_bulletproof_test()
+if __name__ == "__main__":
+    run_truth_serum()
