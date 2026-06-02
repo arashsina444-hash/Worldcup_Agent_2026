@@ -1,75 +1,42 @@
-import os
-import requests
-import time
+import os, requests, time
 
-API_SPORTS_KEY = os.environ.get("API_SPORTS_KEY")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-HEADERS_SPORTS = {"x-apisports-key": API_SPORTS_KEY}
-BASE_URL = "https://v3.football.api-sports.io"
+API, GROQ = os.environ.get("API_SPORTS_KEY"), os.environ.get("GROQ_API_KEY")
+HEADERS = {"x-apisports-key": API}
 
-TARGET_LEAGUES = [2, 39, 140, 135, 78, 61]
-SEASON = 2025 # فصل فوتبالی که در ماه می ۲۰۲۶ به پایان می‌رسد
-
-def predict_with_groq(mega_prompt):
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    data = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": mega_prompt}], "temperature": 0.7}
-    try:
-        return requests.post(url, headers=headers, json=data).json()['choices'][0]['message']['content']
-    except:
-        return "❌ خطای گروق"
-
-def run_smart_backtest():
-    print("⏳ موتور جستجوی هوشمند بازه‌ای روشن شد (May 2026)...")
-    vip_matches = []
+def run_bulletproof_test():
+    print("⏳ در حال دریافت ۱۵ بازی آخرِ تمام‌شده (مسیرِ میان‌بر بدون تاریخ)...")
     
-    # فاز اول: استخراج بهینه با ۶ ریکوئست
-    for league_id in TARGET_LEAGUES:
-        # کلید طلایی معماری جدید: استفاده از from و to
-        response = requests.get(f"{BASE_URL}/fixtures", headers=HEADERS_SPORTS, params={
-            "league": league_id, 
-            "season": SEASON, 
-            "from": "2026-05-01", 
-            "to": "2026-05-31"
-        })
-        matches = response.json().get("response", [])
-        for m in matches:
-            if m['fixture']['status']['short'] in ['FT', 'PEN', 'AET']:
-                vip_matches.append(m)
-        
-        time.sleep(1) # ترمز ۱ ثانیه‌ای کاملاً کافی است
-
-    # مرتب‌سازی بر اساس تاریخ و محدود کردن به ۱۵ بازی برای حفظ سهمیه
-    vip_matches.sort(key=lambda x: x['fixture']['date'])
-    test_matches = vip_matches[:15]
+    # فقط یک درخواست ساده و بی‌رحمانه: آخرین بازی‌های لیگ انگلیس که تمام شده‌اند
+    res = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"league": 39, "status": "FT", "last": 15}).json()
     
-    if not test_matches:
-        print("📭 هیچ بازی در این بازه یافت نشد.")
+    matches = res.get("response", [])
+    if not matches:
+        print("❌ خطای سرور. لیستی دریافت نشد.")
         return
 
-    print(f"✅ تعداد {len(test_matches)} بازی برای تست آماده شد.\n" + "="*50)
+    for i, m in enumerate(matches):
+        h, a = m['teams']['home']['name'], m['teams']['away']['name']
+        actual = f"{m['goals']['home']} - {m['goals']['away']}"
+        
+        # دریافت آمار پیشرفته
+        p_res = requests.get("https://v3.football.api-sports.io/predictions", headers=HEADERS, params={"fixture": m['fixture']['id']}).json()
+        stats = "دیتای خام"
+        if p_res and p_res.get("response"):
+            p = p_res["response"][0].get("predictions", {}).get("percent", {})
+            stats = f"برد میزبان {p.get('home', '')} | مساوی {p.get('draw', '')} | برد مهمان {p.get('away', '')}"
+        
+        # پرامپت نقطه‌زن
+        prompt = f"بازی {h} 🆚 {a}. آمار: {stats}. تو یک تحلیلگر جسور هستی. فقط نتیجه نهایی فوتبال را پیش‌بینی کن (مثل 2-1). هیچ کلمه‌ای اضافه‌تر ننویس."
+        
+        groq = requests.post("https://api.groq.com/openai/v1/chat/completions", headers={"Authorization": f"Bearer {GROQ}"}, json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.7})
+        
+        try:
+            ai = groq.json()['choices'][0]['message']['content'].strip()
+        except:
+            ai = "خطای هوش مصنوعی"
+            
+        print(f"[{i+1}/15] {h} 🆚 {a} | 🤖 پیش‌بینی ماشین: {ai} | 📺 واقعیت: {actual}")
+        time.sleep(5) # ترمز امنیتی
 
-    # فاز دوم: بک‌تست
-    for index, match in enumerate(test_matches):
-        home = match['teams']['home']['name']
-        away = match['teams']['away']['name']
-        actual = f"{match['goals']['home']} - {match['goals']['away']}"
-        
-        # دریافت دیتای Prediction
-        pred_response = requests.get(f"{BASE_URL}/predictions", headers=HEADERS_SPORTS, params={"fixture": match['fixture']['id']})
-        pred_data = pred_response.json().get("response", [])
-        
-        stats = "نامشخص"
-        if pred_data:
-            p = pred_data[0].get('predictions', {}).get('percent', {})
-            stats = f"برد {p.get('home', '')} | مساوی {p.get('draw', '')} | برد مهمان {p.get('away', '')}"
-        
-        prompt = f"بازی: {home} 🆚 {away}. آمار ماشین: {stats}. با در نظر گرفتن مزیت میزبانی محتاطانه (۵۰ امتیاز) و جسارت در مساوی، فقط و فقط نتیجه نهایی (مثل ۱-۱) را پیش‌بینی کن. هیچ توضیح اضافه‌ای نده."
-        
-        ai_pred = predict_with_groq(prompt)
-        print(f"[{index+1}] {home} 🆚 {away} | 🤖 پیش‌بینی: {ai_pred.strip()} | 📺 نتیجه واقعی: {actual}")
-        
-        time.sleep(6) # ترمز اجباری برای جلوگیری از ارور محدودیت سرعت سرورها
-
-if __name__ == "__main__":
-    run_smart_backtest()
+if __name__ == "__main__": 
+    run_bulletproof_test()
