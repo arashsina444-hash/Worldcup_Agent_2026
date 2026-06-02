@@ -1,6 +1,7 @@
 import os
 import requests
 import time
+from datetime import datetime, timedelta
 
 # ۱. دریافت کلیدهای امنیتی
 API_SPORTS_KEY = os.environ.get("API_SPORTS_KEY")
@@ -13,11 +14,8 @@ if not API_SPORTS_KEY or not GROQ_API_KEY:
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS_SPORTS = {"x-apisports-key": API_SPORTS_KEY}
 
-# لیگ‌های VIP (انگلیس، اسپانیا، ایتالیا، آلمان، فرانسه)
-TARGET_LEAGUES = [39, 140, 135, 78, 61]
-
-# ⚠️ تاریخ ماشین زمان (یک روز شلوغ در ماه گذشته که بازی‌های مهمی داشته)
-PAST_DATE = "2026-05-02" 
+# لیگ‌های VIP: لیگ قهرمانان(2)، انگلیس(39)، اسپانیا(140)، ایتالیا(135)، آلمان(78)، فرانسه(61)
+TARGET_LEAGUES = [2, 39, 140, 135, 78, 61]
 
 def predict_with_groq(mega_prompt):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -40,39 +38,55 @@ def predict_with_groq(mega_prompt):
     except Exception as e:
         return f"❌ خطای ارتباطی"
 
-def run_vip_backtest():
-    print(f"⏳ ماشین زمان روشن شد. در حال سفر به تاریخ: {PAST_DATE} ...")
+def run_monthly_backtest():
+    print("⏳ موتور اسکنر ماهانه روشن شد. در حال جمع‌آوری ۵۰ بازی VIP از ماه May 2026...")
     
+    start_date = datetime(2026, 5, 1)
+    end_date = datetime(2026, 5, 31)
+    current_date = start_date
+    
+    vip_matches = []
+    
+    # فاز اول: جمع‌آوری ۵۰ بازی از کل ماه
     try:
-        # ۱. دریافت تمام بازی‌های آن روز
-        response = requests.get(f"{BASE_URL}/fixtures", headers=HEADERS_SPORTS, params={"date": PAST_DATE})
-        matches = response.json().get("response", [])
-        
-        # ۲. فیلتر کردن فقط بازی‌های VIP و بازی‌هایی که تمام شده‌اند (FT)
-        vip_matches = [m for m in matches if m['league']['id'] in TARGET_LEAGUES and m['fixture']['status']['short'] in ['FT', 'PEN', 'AET']]
-        
+        while current_date <= end_date and len(vip_matches) < 50:
+            date_str = current_date.strftime("%Y-%m-%d")
+            
+            response = requests.get(f"{BASE_URL}/fixtures", headers=HEADERS_SPORTS, params={"date": date_str})
+            matches = response.json().get("response", [])
+            
+            for m in matches:
+                # اگر بازی در لیگ VIP بود و تمام شده بود
+                if m['league']['id'] in TARGET_LEAGUES and m['fixture']['status']['short'] in ['FT', 'PEN', 'AET']:
+                    vip_matches.append(m)
+                    if len(vip_matches) == 50:
+                        break
+            
+            current_date += timedelta(days=1)
+            time.sleep(0.5) # توقف کوتاه برای فشار نیاوردن به API
+            
         if not vip_matches:
-            print("📭 در این تاریخ هیچ بازی VIP تمام‌شده‌ای یافت نشد. تاریخ را در کد عوض کن.")
+            print("📭 هیچ بازی VIP در این ماه یافت نشد!")
             return
 
-        # انتخاب حداکثر ۵۰ بازی (برای جلوگیری از طولانی شدن بیش از حد اکشن گیت‌هاب)
-        test_matches = vip_matches[:50]
-        print(f"✅ تعداد {len(test_matches)} بازی VIP برای بک‌تستِ سنگین انتخاب شد.\n" + "="*60)
+        print(f"✅ تعداد {len(vip_matches)} بازی VIP با موفقیت جمع‌آوری شد.\n" + "="*60)
 
-        for index, match in enumerate(test_matches):
+        # فاز دوم: شروع پیش‌بینی کورکورانه (Blind Test)
+        for index, match in enumerate(vip_matches):
             fixture_id = match['fixture']['id']
             home_team = match['teams']['home']['name']
             away_team = match['teams']['away']['name']
             league = match['league']['name']
+            match_date = match['fixture']['date'][:10]
             
-            # ۳. استخراج نتیجه واقعی (فقط برای نمایش به تو، نه ارسال به ربات!)
+            # استخراج نتیجه واقعی برای مقایسه (ارسال نمی‌شود)
             home_goals = match['goals']['home']
             away_goals = match['goals']['away']
             actual_result = f"{home_goals} - {away_goals}"
 
-            print(f"\n[{index+1}/{len(test_matches)}] 🎯 در حال آنالیز: {home_team} 🆚 {away_team} ({league})")
+            print(f"\n[{index+1}/50] 🎯 تاریخ: {match_date} | {home_team} 🆚 {away_team} ({league})")
 
-            # ۴. دریافت دیتای Predictions آماری از ماشین
+            # دریافت دیتای Predictions از ماشین
             pred_response = requests.get(f"{BASE_URL}/predictions", headers=HEADERS_SPORTS, params={"fixture": fixture_id})
             pred_data = pred_response.json().get("response", [])
             
@@ -81,7 +95,7 @@ def run_vip_backtest():
                 percent = pred_data[0].get('predictions', {}).get('percent', {})
                 stats_text = f"شانس ماشین: برد میزبان {percent.get('home', 'N/A')} | مساوی {percent.get('draw', 'N/A')} | برد مهمان {percent.get('away', 'N/A')}"
 
-            # ۵. ساخت پرامپت (بدون لو دادن نتیجه واقعی)
+            # ساخت پرامپت
             mega_prompt = f"""
             تو یک آنالیزور ارشد فوتبال هستی.
             بازی: {home_team} (میزبان) 🆚 {away_team} (مهمان).
@@ -96,21 +110,20 @@ def run_vip_backtest():
             پیش‌بینی دقیق نتیجه نهایی (مثلاً ۱-۰ یا ۱-۱) را بنویس.
             """
 
-            # ۶. شلیک به موتور هوش مصنوعی
+            # شلیک به هوش مصنوعی
             ai_prediction = predict_with_groq(mega_prompt)
             
-            # ۷. مقایسه در لحظه
+            # نمایش نتیجه
             print(f"🤖 پیش‌بینی هوش مصنوعی: {ai_prediction.strip()}")
             print(f"📺 نتیجه واقعی در زمین:  {actual_result}")
             print("-" * 50)
             
-            # توقف ۳ ثانیه‌ای برای جلوگیری از مسدود شدن API
-            time.sleep(3)
+            time.sleep(3) # توقف برای جلوگیری از ارور محدودیت سرعت سرور هوش مصنوعی
 
-        print("\n🏆 بک‌تستِ سنگین ۵۰ بازی تمام شد! حالا درصد وین‌ریت را محاسبه کن.")
+        print("\n🏆 بک‌تستِ سنگین ۵۰ بازی ماه گذشته تمام شد! حالا درصد وین‌ریت را محاسبه کن.")
 
     except Exception as e:
-        print(f"❌ خطا در اجرای ماشین زمان: {e}")
+        print(f"❌ خطا در اجرای اسکنر ماهانه: {e}")
 
 if __name__ == "__main__":
-    run_vip_backtest()
+    run_monthly_backtest()
