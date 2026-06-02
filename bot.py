@@ -1,6 +1,6 @@
 import os
 import requests
-from datetime import datetime
+import time
 
 # ۱. دریافت کلیدهای امنیتی
 API_SPORTS_KEY = os.environ.get("API_SPORTS_KEY")
@@ -13,8 +13,13 @@ if not API_SPORTS_KEY or not GROQ_API_KEY:
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS_SPORTS = {"x-apisports-key": API_SPORTS_KEY}
 
+# لیگ‌های VIP (انگلیس، اسپانیا، ایتالیا، آلمان، فرانسه)
+TARGET_LEAGUES = [39, 140, 135, 78, 61]
+
+# ⚠️ تاریخ ماشین زمان (یک روز شلوغ در ماه گذشته که بازی‌های مهمی داشته)
+PAST_DATE = "2026-05-02" 
+
 def predict_with_groq(mega_prompt):
-    print("🧠 در حال پردازش ترکیبیِ دیتا (ریاضی + روانشناسی) در مغز Llama 3.3...")
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -28,87 +33,84 @@ def predict_with_groq(mega_prompt):
     
     try:
         response = requests.post(url, headers=headers, json=data)
-        response_json = response.json()
         if response.status_code == 200:
-            return response_json['choices'][0]['message']['content']
+            return response.json()['choices'][0]['message']['content']
         else:
-            return f"❌ خطای سرور گروق: {response_json}"
+            return f"❌ خطای سرور گروق"
     except Exception as e:
-        return f"❌ خطای ارتباطی: {e}"
+        return f"❌ خطای ارتباطی"
 
-def get_match_and_predict():
-    today = datetime.now().strftime("%Y-%m-%d")
-    print(f"🔄 در حال دریافت لیست بازی‌های امروز ({today})...")
+def run_vip_backtest():
+    print(f"⏳ ماشین زمان روشن شد. در حال سفر به تاریخ: {PAST_DATE} ...")
     
     try:
-        # فاز اول: دریافت لیست بازی‌ها
-        response = requests.get(f"{BASE_URL}/fixtures", headers=HEADERS_SPORTS, params={"date": today})
-        response.raise_for_status()
+        # ۱. دریافت تمام بازی‌های آن روز
+        response = requests.get(f"{BASE_URL}/fixtures", headers=HEADERS_SPORTS, params={"date": PAST_DATE})
         matches = response.json().get("response", [])
         
-        # ⚠️ فیلتر لیگ‌ها موقتاً برداشته شد تا روی هر بازی موجود تست کنیم
-        valid_matches = matches
+        # ۲. فیلتر کردن فقط بازی‌های VIP و بازی‌هایی که تمام شده‌اند (FT)
+        vip_matches = [m for m in matches if m['league']['id'] in TARGET_LEAGUES and m['fixture']['status']['short'] in ['FT', 'PEN', 'AET']]
         
-        if not valid_matches:
-            print("📭 امروز هیچ بازی در هیچ‌کجای دنیا یافت نشد.")
+        if not vip_matches:
+            print("📭 در این تاریخ هیچ بازی VIP تمام‌شده‌ای یافت نشد. تاریخ را در کد عوض کن.")
             return
 
-        # انتخاب اولین بازی موجود
-        target_match = valid_matches[0]
-        fixture_id = target_match['fixture']['id']
-        home_team = target_match['teams']['home']['name']
-        away_team = target_match['teams']['away']['name']
-        league = target_match['league']['name']
-        
-        print(f"✅ مسابقه تست یافت شد: {home_team} 🆚 {away_team} | تورنمنت: {league}")
-        print(f"📊 در حال استخراج دیتای پیشرفته آماری و یادگیری ماشین...")
+        # انتخاب حداکثر ۵۰ بازی (برای جلوگیری از طولانی شدن بیش از حد اکشن گیت‌هاب)
+        test_matches = vip_matches[:50]
+        print(f"✅ تعداد {len(test_matches)} بازی VIP برای بک‌تستِ سنگین انتخاب شد.\n" + "="*60)
 
-        # فاز دوم: استخراج دیتای Predictions از API-Sports
-        pred_response = requests.get(f"{BASE_URL}/predictions", headers=HEADERS_SPORTS, params={"fixture": fixture_id})
-        pred_data = pred_response.json().get("response", [])
-        
-        stats_text = "دیتای آماری پیشرفته برای این بازی در دسترس نیست."
-        if pred_data:
-            prediction_info = pred_data[0].get('predictions', {})
-            percent = prediction_info.get('percent', {})
-            advice = prediction_info.get('advice', 'نامشخص')
+        for index, match in enumerate(test_matches):
+            fixture_id = match['fixture']['id']
+            home_team = match['teams']['home']['name']
+            away_team = match['teams']['away']['name']
+            league = match['league']['name']
             
-            stats_text = f"""
-            دیتای خام استخراج شده از مدل‌های ریاضی (Machine Learning):
-            - شانس برد میزبان ({home_team}): {percent.get('home', 'N/A')}
-            - شانس مساوی: {percent.get('draw', 'N/A')}
-            - شانس برد مهمان ({away_team}): {percent.get('away', 'N/A')}
-            - توصیه ماشینی API-Sports: {advice}
+            # ۳. استخراج نتیجه واقعی (فقط برای نمایش به تو، نه ارسال به ربات!)
+            home_goals = match['goals']['home']
+            away_goals = match['goals']['away']
+            actual_result = f"{home_goals} - {away_goals}"
+
+            print(f"\n[{index+1}/{len(test_matches)}] 🎯 در حال آنالیز: {home_team} 🆚 {away_team} ({league})")
+
+            # ۴. دریافت دیتای Predictions آماری از ماشین
+            pred_response = requests.get(f"{BASE_URL}/predictions", headers=HEADERS_SPORTS, params={"fixture": fixture_id})
+            pred_data = pred_response.json().get("response", [])
+            
+            stats_text = "دیتای آماری در دسترس نیست."
+            if pred_data:
+                percent = pred_data[0].get('predictions', {}).get('percent', {})
+                stats_text = f"شانس ماشین: برد میزبان {percent.get('home', 'N/A')} | مساوی {percent.get('draw', 'N/A')} | برد مهمان {percent.get('away', 'N/A')}"
+
+            # ۵. ساخت پرامپت (بدون لو دادن نتیجه واقعی)
+            mega_prompt = f"""
+            تو یک آنالیزور ارشد فوتبال هستی.
+            بازی: {home_team} (میزبان) 🆚 {away_team} (مهمان).
+            دیتای ماشین: {stats_text}
+            
+            قوانین:
+            ۱. مزیت میزبانی محتاطانه (۵۰ امتیاز).
+            ۲. جسارت در مساوی اگر درصدها نزدیک است.
+            ۳. به هیچ وجه نتیجه واقعی بازی را حدس نزن. فقط پیش‌بینی کن.
+            
+            فقط و فقط یک خط خروجی بده:
+            پیش‌بینی دقیق نتیجه نهایی (مثلاً ۱-۰ یا ۱-۱) را بنویس.
             """
 
-        # فاز سوم: ساخت مگاپرامپت (ترکیب ماشین + ذهن انسان)
-        mega_prompt = f"""
-        تو یک آنالیزور ارشد و استراتژیست فوتبال برای یک سوپراپِ پیش‌بینیِ حرفه‌ای هستی.
-        بازی امروز: {home_team} (میزبان) 🆚 {away_team} (مهمان) در تورنمنت {league}.
-        
-        {stats_text}
-        
-        قوانینِ مطلقِ تحلیل تو (بر اساس مدل‌های دیکسون-کولز و روانشناسی فوتبال):
-        ۱. دیتای ریاضیِ بالا را پایه و اساس قرار بده، اما آن را با پارامترهای زیر کالیبره کن:
-        ۲. مزیت میزبانی محتاطانه: به تیم میزبان فقط ۵۰ امتیاز Elo (نه بیشتر) برای فشار استادیوم و سوگیری داوری بده.
-        ۳. قانون شجاعت در مساوی: اگر درصدهای بالا به هم نزدیک بودند (مثلاً تفاوت شانس برد دو تیم کمتر از ۱۵٪ بود)، جسارت داشته باش و شانس نتیجه مساوی (به خصوص ۱-۱ یا ۰-۰) را به شدت بالا ببر. در تله‌ی پیش‌بینی برد برای تیم میزبان نیفت.
-        ۴. لحن تو باید هیجانی، کوبنده، دارای ایموجی و مناسب برای کاربران یک اپلیکیشن VIP پولی باشد.
-        
-        خروجی تو باید دقیقاً این فرمت را داشته باشد (بدون حاشیه):
-        🔥 تحلیل ژورنالیستی و تاکتیکی بازی (با اشاره هوشمندانه به آمارهای ماشین و وضعیت روانی)
-        📊 شانس برد {home_team} / شانس مساوی / شانس برد {away_team} (درصدهای نهایی و کالیبره شده خودت را بنویس)
-        🎯 پیش‌بینی دقیق نتیجه نهایی (مثلاً ۱-۱)
-        """
+            # ۶. شلیک به موتور هوش مصنوعی
+            ai_prediction = predict_with_groq(mega_prompt)
+            
+            # ۷. مقایسه در لحظه
+            print(f"🤖 پیش‌بینی هوش مصنوعی: {ai_prediction.strip()}")
+            print(f"📺 نتیجه واقعی در زمین:  {actual_result}")
+            print("-" * 50)
+            
+            # توقف ۳ ثانیه‌ای برای جلوگیری از مسدود شدن API
+            time.sleep(3)
 
-        ai_response_text = predict_with_groq(mega_prompt)
-        
-        print("\n" + "="*60)
-        print("🤖 خروجی نهایی موتور سوپراپ (حالت تست بدون فیلتر):\n")
-        print(ai_response_text)
-        print("="*60)
+        print("\n🏆 بک‌تستِ سنگین ۵۰ بازی تمام شد! حالا درصد وین‌ریت را محاسبه کن.")
 
     except Exception as e:
-        print(f"❌ خطا در پردازش سیستم: {e}")
+        print(f"❌ خطا در اجرای ماشین زمان: {e}")
 
 if __name__ == "__main__":
-    get_match_and_predict()
+    run_vip_backtest()
