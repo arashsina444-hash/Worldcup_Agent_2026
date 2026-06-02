@@ -7,21 +7,24 @@ API_SPORTS_KEY = os.environ.get("API_SPORTS_KEY")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 if not API_SPORTS_KEY or not GROQ_API_KEY:
-    print("❌ خطا: کلیدهای API (فوتبال یا گروق) تنظیم نشده‌اند!")
+    print("❌ خطا: کلیدهای API تنظیم نشده‌اند!")
     exit()
 
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS_SPORTS = {"x-apisports-key": API_SPORTS_KEY}
 
+# لیگ‌های معتبر: جام جهانی(1)، انگلیس(39)، اسپانیا(140)، ایتالیا(135)، آلمان(78)، فرانسه(61)
+TARGET_LEAGUES = [1, 39, 140, 135, 78, 61]
+
 def predict_with_groq(mega_prompt):
-    print("🧠 در حال تزریق دیتا به مغز Llama 3.3 (سرورهای فوق‌سریع Groq)...")
+    print("🧠 در حال پردازش ترکیبیِ دیتا (ریاضی + روانشناسی) در مغز Llama 3.3...")
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
     data = {
-        "model": "llama-3.3-70b-versatile",  # <--- آپدیت به جدیدترین نسل فعال
+        "model": "llama-3.3-70b-versatile",
         "messages": [{"role": "user", "content": mega_prompt}],
         "temperature": 0.7
     }
@@ -41,46 +44,73 @@ def get_match_and_predict():
     print(f"🔄 در حال دریافت لیست بازی‌های امروز ({today})...")
     
     try:
+        # فاز اول: پیدا کردن بازی‌های طلایی
         response = requests.get(f"{BASE_URL}/fixtures", headers=HEADERS_SPORTS, params={"date": today})
         response.raise_for_status()
         matches = response.json().get("response", [])
         
-        if not matches:
-            print("📭 امروز هیچ بازی یافت نشد.")
+        valid_matches = [m for m in matches if m['league']['id'] in TARGET_LEAGUES]
+        
+        if not valid_matches:
+            print("📭 امروز هیچ بازی مهمی در ۵ لیگ معتبر یا جام جهانی یافت نشد.")
             return
 
-        target_match = matches[0]
+        # انتخاب اولین بازی معتبر
+        target_match = valid_matches[0]
+        fixture_id = target_match['fixture']['id']
         home_team = target_match['teams']['home']['name']
         away_team = target_match['teams']['away']['name']
         league = target_match['league']['name']
         
-        print(f"✅ مسابقه: {home_team} 🆚 {away_team} | لیگ: {league}")
+        print(f"✅ مسابقه VIP یافت شد: {home_team} 🆚 {away_team} | تورنمنت: {league}")
+        print(f"📊 در حال استخراج دیتای پیشرفته آماری و یادگیری ماشین...")
 
+        # فاز دوم: استخراج دیتای Predictions از API-Sports
+        pred_response = requests.get(f"{BASE_URL}/predictions", headers=HEADERS_SPORTS, params={"fixture": fixture_id})
+        pred_data = pred_response.json().get("response", [])
+        
+        stats_text = "دیتای آماری پیشرفته برای این بازی در دسترس نیست."
+        if pred_data:
+            prediction_info = pred_data[0].get('predictions', {})
+            percent = prediction_info.get('percent', {})
+            advice = prediction_info.get('advice', 'نامشخص')
+            
+            stats_text = f"""
+            دیتای خام استخراج شده از مدل‌های ریاضی (Machine Learning):
+            - شانس برد میزبان ({home_team}): {percent.get('home', 'N/A')}
+            - شانس مساوی: {percent.get('draw', 'N/A')}
+            - شانس برد مهمان ({away_team}): {percent.get('away', 'N/A')}
+            - توصیه ماشینی API-Sports: {advice}
+            """
+
+        # فاز سوم: ساخت مگاپرامپت (ترکیب ماشین + ذهن انسان)
         mega_prompt = f"""
-        تو یک آنالیزور ارشد و ژورنالیست هیجانی فوتبال هستی که برای یک سندیکای سرمایه‌گذاری کار می‌کنی.
-        بازی امروز: {home_team} (میزبان) مقابل {away_team} (مهمان) در لیگ {league}.
+        تو یک آنالیزور ارشد و استراتژیست فوتبال برای یک سوپراپِ پیش‌بینیِ حرفه‌ای هستی.
+        بازی امروز: {home_team} (میزبان) 🆚 {away_team} (مهمان) در تورنمنت {league}.
         
-        قوانینِ مطلقِ تحلیل تو (بر اساس مدل‌های دیکسون-کولز و سیستم Elo ارتقا یافته):
-        ۱. مزیت میزبانی: تیم {home_team} به دلیل میزبانی از نظر روانی ۸۰ امتیاز در سیستم Elo جلوتر است. این فشار محیطی را در نظر بگیر.
-        ۲. حل معمای مساوی: اگر احساس کردی قدرت دو تیم نزدیک است، شانس نتیجه مساوی (به خصوص ۱-۱) را بسیار بالا ببر.
-        ۳. سوگیری داوری: تیم مهمان ({away_team}) تحت فشار استادیوم ممکن است خطای بیشتری کند.
-        ۴. لحن تو باید به شدت پرانرژی، کوبنده و مناسبِ یک پست ویروسیِ تلگرام باشد (با استفاده از ایموجی).
+        {stats_text}
         
-        خروجی تو باید دقیقاً این فرمت را داشته باشد (بدون کلمات اضافه):
-        🔥 تحلیل ژورنالیستی و تاکتیکی بازی (یک پاراگراف هیجانی)
-        📊 شانس برد {home_team} / شانس مساوی / شانس برد {away_team} (به درصد)
-        🎯 پیش‌بینی دقیق نتیجه نهایی (مثلاً ۲-۱)
+        قوانینِ مطلقِ تحلیل تو (بر اساس مدل‌های دیکسون-کولز و روانشناسی فوتبال):
+        ۱. دیتای ریاضیِ بالا را پایه و اساس قرار بده، اما آن را با پارامترهای زیر کالیبره کن:
+        ۲. مزیت میزبانی محتاطانه: به تیم میزبان فقط ۵۰ امتیاز Elo (نه بیشتر) برای فشار استادیوم و سوگیری داوری بده.
+        ۳. قانون شجاعت در مساوی: اگر درصدهای بالا به هم نزدیک بودند (مثلاً تفاوت شانس برد دو تیم کمتر از ۱۵٪ بود)، جسارت داشته باش و شانس نتیجه مساوی (به خصوص ۱-۱ یا ۰-۰) را به شدت بالا ببر. در تله‌ی پیش‌بینی برد برای تیم میزبان نیفت.
+        ۴. لحن تو باید هیجانی، کوبنده، دارای ایموجی و مناسب برای کاربران یک اپلیکیشن VIP پولی باشد.
+        
+        خروجی تو باید دقیقاً این فرمت را داشته باشد (بدون حاشیه):
+        🔥 تحلیل ژورنالیستی و تاکتیکی بازی (با اشاره هوشمندانه به آمارهای ماشین و وضعیت روانی)
+        📊 شانس برد {home_team} / شانس مساوی / شانس برد {away_team} (درصدهای نهایی و کالیبره شده خودت را بنویس)
+        🎯 پیش‌بینی دقیق نتیجه نهایی (مثلاً ۱-۱)
         """
 
         ai_response_text = predict_with_groq(mega_prompt)
         
-        print("\n" + "="*50)
-        print("🤖 خروجی نهایی اوراکل فوتبال:\n")
+        print("\n" + "="*60)
+        print("🤖 خروجی نهایی موتور سوپراپ (ترکیب آمار پیشرفته + هوش مصنوعی):\n")
         print(ai_response_text)
-        print("="*50)
+        print("="*60)
 
     except Exception as e:
-        print(f"❌ خطا در پردازش دیتای فوتبال: {e}")
+        print(f"❌ خطا در پردازش سیستم: {e}")
 
 if __name__ == "__main__":
     get_match_and_predict()
