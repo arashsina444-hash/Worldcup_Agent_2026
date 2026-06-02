@@ -13,9 +13,6 @@ if not API_SPORTS_KEY or not GROQ_API_KEY:
 BASE_URL = "https://v3.football.api-sports.io"
 HEADERS_SPORTS = {"x-apisports-key": API_SPORTS_KEY}
 
-# لیگ‌های معتبر: جام جهانی(1)، انگلیس(39)، اسپانیا(140)، ایتالیا(135)، آلمان(78)، فرانسه(61)
-TARGET_LEAGUES = [1, 39, 140, 135, 78, 61]
-
 def predict_with_groq(mega_prompt):
     print("🧠 در حال پردازش ترکیبیِ دیتا (ریاضی + روانشناسی) در مغز Llama 3.3...")
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -44,25 +41,26 @@ def get_match_and_predict():
     print(f"🔄 در حال دریافت لیست بازی‌های امروز ({today})...")
     
     try:
-        # فاز اول: پیدا کردن بازی‌های طلایی
+        # فاز اول: دریافت لیست بازی‌ها
         response = requests.get(f"{BASE_URL}/fixtures", headers=HEADERS_SPORTS, params={"date": today})
         response.raise_for_status()
         matches = response.json().get("response", [])
         
-        valid_matches = [m for m in matches if m['league']['id'] in TARGET_LEAGUES]
+        # ⚠️ فیلتر لیگ‌ها موقتاً برداشته شد تا روی هر بازی موجود تست کنیم
+        valid_matches = matches
         
         if not valid_matches:
-            print("📭 امروز هیچ بازی مهمی در ۵ لیگ معتبر یا جام جهانی یافت نشد.")
+            print("📭 امروز هیچ بازی در هیچ‌کجای دنیا یافت نشد.")
             return
 
-        # انتخاب اولین بازی معتبر
+        # انتخاب اولین بازی موجود
         target_match = valid_matches[0]
         fixture_id = target_match['fixture']['id']
         home_team = target_match['teams']['home']['name']
         away_team = target_match['teams']['away']['name']
         league = target_match['league']['name']
         
-        print(f"✅ مسابقه VIP یافت شد: {home_team} 🆚 {away_team} | تورنمنت: {league}")
+        print(f"✅ مسابقه تست یافت شد: {home_team} 🆚 {away_team} | تورنمنت: {league}")
         print(f"📊 در حال استخراج دیتای پیشرفته آماری و یادگیری ماشین...")
 
         # فاز دوم: استخراج دیتای Predictions از API-Sports
@@ -105,7 +103,7 @@ def get_match_and_predict():
         ai_response_text = predict_with_groq(mega_prompt)
         
         print("\n" + "="*60)
-        print("🤖 خروجی نهایی موتور سوپراپ (ترکیب آمار پیشرفته + هوش مصنوعی):\n")
+        print("🤖 خروجی نهایی موتور سوپراپ (حالت تست بدون فیلتر):\n")
         print(ai_response_text)
         print("="*60)
 
