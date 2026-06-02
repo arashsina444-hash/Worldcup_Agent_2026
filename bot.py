@@ -4,24 +4,31 @@ API = os.environ.get("API_SPORTS_KEY")
 GROQ = os.environ.get("GROQ_API_KEY")
 HEADERS = {"x-apisports-key": API}
 
-def run_future_test():
-    print("🚀 در حال استخراج ۵ مسابقه آینده در جهان (تست زنده)...")
+def run_victory_test():
+    print("🔥 شلیک نهایی به بازی‌های امروز (بدون هیچ فیلتر پولی و لیگی)...")
     
-    # پارامتر next: گرفتن بازی‌های آینده بدون درگیر شدن با فصل و تاریخ
-    res = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"next": 5}).json()
+    # استفاده از تاریخ امروز که برای اکانت رایگان کاملاً باز است
+    TODAY = "2026-06-02"
+    res = requests.get("https://v3.football.api-sports.io/fixtures", headers=HEADERS, params={"date": TODAY}).json()
+    
+    if "errors" in res and res["errors"]:
+        print("❌ ارور سرور:", res["errors"])
+        return
+        
     matches = res.get("response", [])
-    
     if not matches:
-        print("❌ خطای سرور یا اتمام سهمیه.")
+        print("📭 واقعاً امروز هیچ بازی در دنیا برگزار نمی‌شود!")
         return
 
-    for i, m in enumerate(matches):
+    print(f"✅ تعداد {len(matches)} بازی در دنیا پیدا شد. انتخاب ۲ بازی اول برای تست موتور هوش مصنوعی...\n" + "-"*40)
+    
+    for i, m in enumerate(matches[:2]):
         h, a = m['teams']['home']['name'], m['teams']['away']['name']
         fix_id = m['fixture']['id']
-        date = m['fixture']['date'][:10]
         
+        # استخراج دیتای ماشین‌لرنینگ
         p_res = requests.get("https://v3.football.api-sports.io/predictions", headers=HEADERS, params={"fixture": fix_id}).json()
-        stats = "دیتای خام"
+        stats = "دیتای خام در دسترس نیست"
         if p_res and p_res.get("response"):
             p = p_res["response"][0].get("predictions", {}).get("percent", {})
             stats = f"برد میزبان {p.get('home', '')} | مساوی {p.get('draw', '')} | برد مهمان {p.get('away', '')}"
@@ -34,8 +41,8 @@ def run_future_test():
         except:
             ai = "خطای هوش مصنوعی"
             
-        print(f"[{i+1}/5] تاریخ بازی: {date} | {h} 🆚 {a} | 🤖 پیش‌بینی سوپراپ: {ai}")
-        time.sleep(6) # ترمز امنیتی
+        print(f"[{i+1}/2] {h} 🆚 {a} \n🤖 پیش‌بینی سوپراپ شما: {ai}\n")
+        time.sleep(3)
 
 if __name__ == "__main__": 
-    run_future_test()
+    run_victory_test()
