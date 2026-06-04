@@ -1,29 +1,20 @@
-name: Run Football Oracle
+name: Run WorldCup Agent
 
 on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
+  schedule:
+    - cron: '0 12 * * *'  # اجرا هر روز ساعت ۱۲ ظهر به وقت جهانی
+  workflow_dispatch:      # قابلیت اجرای دستی
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          pip install requests
-
-      - name: Execute Football Bot
+      - run: pip install requests
+      - run: python bot.py
         env:
           API_SPORTS_KEY: ${{ secrets.API_SPORTS_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-        run: python bot.py
